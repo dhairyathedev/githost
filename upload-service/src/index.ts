@@ -1,12 +1,13 @@
 import express from 'express';
 import simpleGit from 'simple-git';
 import { v4 as uuidv4 } from 'uuid';
-import { getAllFiles } from './lib/files';
 import path from 'path';
-import { uploadFile } from './lib/aws';
+import { buildRepo, uploadDirectoryToS3 } from './lib/helpers';
 import { createClient } from '@supabase/supabase-js';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import { Readable } from 'stream';
 
 // Load environment variables
 dotenv.config();
@@ -41,7 +42,18 @@ app.get('/env', (req, res) => {
 app.post('/upload', async (req, res) => {
   const { repoUrl } = req.body;
   const id = uuidv4();
-  
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  const logStream = new Readable({
+    read() {}
+  });
+
+  logStream.on('data', (chunk) => {
+    res.write(`data: ${chunk.toString()}\n\n`);
+  });
 
   try {
     // Insert initial status into Supabase
@@ -49,23 +61,25 @@ app.post('/upload', async (req, res) => {
       { id, repo_url: repoUrl, status: 'cloning', progress: 0 }
     ]);
 
-    await simpleGit().clone(repoUrl, path.join(__dirname, `../output/${id}`));
+    const repoPath = path.join(__dirname, `../output/${id}`);
+    logStream.push('Cloning repository...\n');
+    await simpleGit().clone(repoUrl, repoPath);
 
     // Update status to 'uploading'
     await supabase.from('upload_statuses').update({
       status: 'uploading'
     }).eq('id', id);
 
-    const files = await getAllFiles(path.join(__dirname, `../output/${id}`));
-    const totalFiles = files.length;
+    logStream.push('Building repository...\n');
+    const buildDir = await buildRepo(repoPath);
 
-    await Promise.all(files.map(async (file, index) => {
-      await uploadFile(file.slice(__dirname.length + 1), file);
-      // Update progress
-      await supabase.from('upload_statuses').update({
-        progress: Math.round(((index + 1) / totalFiles) * 100)
-      }).eq('id', id);
-    }));
+    if (buildDir) {
+      logStream.push('Uploading built files to S3...\n');
+      await uploadDirectoryToS3(buildDir, "source", `builds/${id}`);
+    } else {
+      logStream.push('Uploading source files to S3...\n');
+      await uploadDirectoryToS3(repoPath, "source", `builds/${id}`);
+    }
 
     // Update status to 'completed'
     await supabase.from('upload_statuses').update({
@@ -73,9 +87,14 @@ app.post('/upload', async (req, res) => {
       progress: 100
     }).eq('id', id);
 
-    res.json({ id, repoUrl });
-  } catch (error) {
+    logStream.push('Upload complete\n');
+    logStream.push(null);  // Close the stream
+
+    res.end();  // Close the SSE connection after completion
+  } catch (error: any) {
     console.error('Error during upload:', error);
+    logStream.push(`Error: ${error.message}\n`);
+    logStream.push(null);  // Close the stream
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
@@ -91,6 +110,11 @@ app.get('/status/:id', async (req, res) => {
 
   res.json(data);
 });
+
+// In-memory store for active log streams
+const activeLogStreams: { [key: string]: Readable } = {};
+
+console.log(`Server is running on port ${port}`);
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
