@@ -4,18 +4,23 @@ import path from "path";
 import { promisify } from "util";
 import stream from "stream";
 import { exec } from "child_process";
+import { config } from "dotenv";
 
 const pipeline = promisify(stream.pipeline);
 
-// Load environment variables if not already loaded
 if (process.env.NODE_ENV !== 'production') {
-  require('dotenv').config();
+  config();
 }
 
 const s3 = new S3({
   accessKeyId: process.env.ACCESS_KEY_ID,
   secretAccessKey: process.env.SECRET_ACCESS_KEY,
   endpoint: process.env.CLOUDFLARE_ENDPOINT,
+  httpOptions: {
+    timeout: 300000,
+    connectTimeout: 10000,
+  },
+  maxRetries: 10,
 });
 
 export const downloadFilesFromS3 = async (prefix: string, downloadDir: string): Promise<void> => {
@@ -62,7 +67,6 @@ export const buildRepo = async (repoPath: string): Promise<string> => {
   let buildDir = "";
 
   if (fs.existsSync(packageJsonPath)) {
-    // Check if it's a Node.js project
     try {
       await execPromise(`npm install`, { cwd: repoPath });
       await execPromise(`npm run build`, { cwd: repoPath });
@@ -77,14 +81,14 @@ export const buildRepo = async (repoPath: string): Promise<string> => {
       throw new Error("Build failed");
     }
   }
-  // If no build step is needed, assume it's a simple HTML/CSS/JS project
+
   return buildDir;
 };
 
 export const uploadDirectoryToS3 = async (dirPath: string, s3Bucket: string, s3Prefix: string): Promise<void> => {
   const files = await getAllFiles(dirPath);
 
-  for (const filePath of files) {
+  await Promise.all(files.map(async (filePath) => {
     const fileContent = fs.createReadStream(filePath);
     const s3Key = path.join(s3Prefix, path.relative(dirPath, filePath));
 
@@ -95,7 +99,7 @@ export const uploadDirectoryToS3 = async (dirPath: string, s3Bucket: string, s3P
     };
 
     await s3.upload(params).promise();
-  }
+  }));
 };
 
 const getAllFiles = async (dir: string, fileList: string[] = []): Promise<string[]> => {

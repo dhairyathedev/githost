@@ -40,7 +40,7 @@ app.get('/env', (req, res) => {
 });
 
 app.post('/upload', async (req, res) => {
-  const { repoUrl } = req.body;
+  const { title,repoUrl } = req.body;
   const id = uuidv4();
 
   res.setHeader('Content-Type', 'text/event-stream');
@@ -58,7 +58,7 @@ app.post('/upload', async (req, res) => {
   try {
     // Insert initial status into Supabase
     await supabase.from('upload_statuses').insert([
-      { id, repo_url: repoUrl, status: 'cloning', progress: 0 }
+      { id,title, repo_url: repoUrl, status: 'cloning', progress: 0 }
     ]);
 
     const repoPath = path.join(__dirname, `../output/${id}`);
@@ -86,8 +86,8 @@ app.post('/upload', async (req, res) => {
       status: 'completed',
       progress: 100
     }).eq('id', id);
-
-    logStream.push('Upload complete\n');
+    logStream.push(`ID: ${id}\n`);
+    logStream.push(`Upload complete\n`);
     logStream.push(null);  // Close the stream
 
     res.end();  // Close the SSE connection after completion
