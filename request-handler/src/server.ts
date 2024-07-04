@@ -34,7 +34,7 @@ const getContentType = (filePath: string): string => {
 };
 
 // Route to fetch and serve the built app from S3
-app.get('/open/:id/*', async (req, res) => {
+app.get('/:id/*', async (req, res) => {
   const params = req.params as any;
   const id = params.id;
   const filePath = params[0] || 'index.html';
