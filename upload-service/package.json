@@ -1,0 +1,25 @@
+{
+  "name": "upload-service",
+  "scripts": {
+    "dev": "nodemon"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.44.2",
+    "aws-sdk": "^2.1653.0",
+    "body-parser": "^1.20.2",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "hono": "^4.4.11",
+    "simple-git": "^3.25.0",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.9",
+    "@types/uuid": "^10.0.0",
+    "nodemon": "^3.1.4",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.7.1",
+    "typescript": "^5.5.3"
+  }
+}
