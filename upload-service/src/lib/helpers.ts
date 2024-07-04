@@ -91,7 +91,7 @@ export const uploadDirectoryToS3 = async (dirPath: string, s3Bucket: string, s3P
   await Promise.all(files.map(async (filePath) => {
     const fileContent = fs.createReadStream(filePath);
     const s3Key = path.join(s3Prefix, path.relative(dirPath, filePath));
-
+    console.log(`S3 Key: ${s3Key}`)
     const params = {
       Bucket: s3Bucket,
       Key: s3Key,

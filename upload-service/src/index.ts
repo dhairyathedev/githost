@@ -40,8 +40,8 @@ app.get('/env', (req, res) => {
 });
 
 app.post('/upload', async (req, res) => {
-  const { title,repoUrl } = req.body;
-  const id = uuidv4();
+  const { id,title,repoUrl } = req.body;
+  // const id = uuidv4();
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
