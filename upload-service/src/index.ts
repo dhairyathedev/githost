@@ -8,6 +8,7 @@ import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import { Readable } from 'stream';
+import rimraf from 'rimraf'; // Add rimraf to delete directories
 
 // Load environment variables
 dotenv.config();
@@ -40,8 +41,7 @@ app.get('/env', (req, res) => {
 });
 
 app.post('/upload', async (req, res) => {
-  const { id,title,repoUrl } = req.body;
-  // const id = uuidv4();
+  const { id, title, repoUrl } = req.body;
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -56,16 +56,20 @@ app.post('/upload', async (req, res) => {
   });
 
   try {
-    // Insert initial status into Supabase
     await supabase.from('upload_statuses').insert([
-      { id,title, repo_url: repoUrl, status: 'cloning', progress: 0 }
+      { id, title, repo_url: repoUrl, status: 'cloning', progress: 0 }
     ]);
 
     const repoPath = path.join(__dirname, `../output/${id}`);
+    
+    // Delete the existing directory if it exists
+    if (fs.existsSync(repoPath)) {
+      rimraf.sync(repoPath);
+    }
+    
     logStream.push('Cloning repository...\n');
     await simpleGit().clone(repoUrl, repoPath);
 
-    // Update status to 'uploading'
     await supabase.from('upload_statuses').update({
       status: 'uploading'
     }).eq('id', id);
@@ -81,39 +85,68 @@ app.post('/upload', async (req, res) => {
       await uploadDirectoryToS3(repoPath, "source", `builds/${id}`);
     }
 
-    // Update status to 'completed'
     await supabase.from('upload_statuses').update({
       status: 'completed',
       progress: 100
     }).eq('id', id);
+
     logStream.push(`ID: ${id}\n`);
     logStream.push(`Upload complete\n`);
-    logStream.push(null);  // Close the stream
+    logStream.push(null);
 
-    res.end();  // Close the SSE connection after completion
+    res.end();
   } catch (error: any) {
     console.error('Error during upload:', error);
     logStream.push(`Error: ${error.message}\n`);
-    logStream.push(null);  // Close the stream
-    res.status(500).json({ error: 'Internal Server Error' });
+    logStream.push(null);
+    res.end(); // Ensure response is ended before sending error response
+
+    // Use setImmediate to avoid 'Cannot set headers after they are sent to the client'
+    setImmediate(() => {
+      res.status(500).json({ error: 'Internal Server Error' });
+    });
   }
 });
 
-app.get('/status/:id', async (req, res) => {
+app.get('/status/:id', async (req, res, next) => {
   const { id } = req.params;
-  const { data, error } = await supabase.from('upload_statuses').select('*').eq('id', id).single();
+  try {
+    const { data, error } = await supabase.from('upload_statuses').select('*').eq('id', id).single();
 
-  if (error) {
-    return res.status(404).json({ error: 'ID not found' });
+    if (error) {
+      return res.status(404).json({ error: 'ID not found' });
+    }
+
+    res.json(data);
+  } catch (error) {
+    next(error);
   }
+});
 
-  res.json(data);
+// Global error handler
+app.use((err: any, req: any, res:any, next:any) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal Server Error' });
 });
 
 // In-memory store for active log streams
 const activeLogStreams: { [key: string]: Readable } = {};
 
-
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM signal received: closing HTTP server');
+  server.close(() => {
+    console.log('HTTP server closed');
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT signal received: closing HTTP server');
+  server.close(() => {
+    console.log('HTTP server closed');
+  });
 });
