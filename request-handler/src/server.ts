@@ -4,17 +4,22 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const s3 = new S3({
-  accessKeyId: "162f223a76affc6159545f47d9a1c673",
-  secretAccessKey: "4fb882de361f08485b9e46b436b04f67fa8b0fd9d0591514a9cee875fcf76da0",
+  accessKeyId: process.env.ACCESS_KEY_ID,
+  secretAccessKey: process.env.SECRET_ACCESS_KEY,
   endpoint: "https://333042712cd6ef85de4f399a2789813a.r2.cloudflarestorage.com"
-})
+});
 
 const app = express();
 
 app.get("/*", async (req, res) => {
     const host = req.hostname;
     const id = host.split(".")[0];
-    const filePath = req.path.substring(1); // remove leading slash
+    let filePath = req.path.substring(1); // remove leading slash
+    
+    if (filePath === "") {
+        filePath = "index.html";
+    }
+
     const key = `builds/${id}/${filePath}`;
     
     console.log(`Requesting key: ${key}`);
