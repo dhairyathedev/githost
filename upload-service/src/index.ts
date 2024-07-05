@@ -99,7 +99,6 @@ app.post('/upload', async (req, res) => {
   }
 });
 
-// Status check endpoint
 app.get('/status/:id', async (req, res) => {
   const { id } = req.params;
   const { data, error } = await supabase.from('upload_statuses').select('*').eq('id', id).single();
@@ -114,7 +113,6 @@ app.get('/status/:id', async (req, res) => {
 // In-memory store for active log streams
 const activeLogStreams: { [key: string]: Readable } = {};
 
-console.log(`Server is running on port ${port}`);
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
