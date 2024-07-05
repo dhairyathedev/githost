@@ -68,7 +68,7 @@ export const buildRepo = async (repoPath: string): Promise<string> => {
 
   if (fs.existsSync(packageJsonPath)) {
     try {
-      await execPromise(`npm install`, { cwd: repoPath });
+      await execPromise(`npm install --force`, { cwd: repoPath });
       await execPromise(`npm run build`, { cwd: repoPath });
 
       if (fs.existsSync(path.join(repoPath, "build"))) {
