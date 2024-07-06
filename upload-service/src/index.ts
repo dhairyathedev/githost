@@ -2,14 +2,11 @@ import express from 'express';
 import simpleGit from 'simple-git';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
-import { buildRepo, uploadDirectoryToS3 } from './lib/helpers';
 import { createClient } from '@supabase/supabase-js';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
-import fs from 'fs';
 import { Readable } from 'stream';
-import {rimraf} from 'rimraf'; 
-import { createDNSRecord } from './lib/dns';
+import { addToBuildQueue, getBuildStatus } from './lib/buildQueue';
 
 // Load environment variables
 dotenv.config();
@@ -58,7 +55,23 @@ app.post('/upload', async (req, res) => {
 
   const repoPath = path.join(__dirname, `../output/${id}`);
 
-  const cleanupAndHandleError = async (error: Error) => {
+  try {
+    await supabase.from('upload_statuses').insert([
+      { id, title, repo_url: repoUrl, status: 'cloning', progress: 0 }
+    ]);
+
+    logStream.push('Cloning repository...\n');
+    await simpleGit().clone(repoUrl, repoPath);
+
+    logStream.push('Adding to build queue...\n');
+    await addToBuildQueue(id, repoPath, repoUrl);
+
+    logStream.push(`ID: ${id}\n`);
+    logStream.push(`Added to build queue\n`);
+    logStream.push(null);
+
+    res.end();
+  } catch (error: any) {
     console.error('Error during upload:', error);
     logStream.push(`Error: ${error.message}\n`);
     
@@ -71,63 +84,8 @@ app.post('/upload', async (req, res) => {
       console.error('Error updating database:', dbError);
     }
 
-    try {
-      await rimraf(repoPath);
-    } catch (cleanupError) {
-      console.error('Error cleaning up repository:', cleanupError);
-    }
-
     logStream.push(null);
     res.end();
-  };
-
-  try {
-    await supabase.from('upload_statuses').insert([
-      { id, title, repo_url: repoUrl, status: 'cloning', progress: 0 }
-    ]);
-
-    logStream.push('Cloning repository...\n');
-    await simpleGit().clone(repoUrl, repoPath);
-
-    await supabase.from('upload_statuses').update({
-      status: 'uploading',
-      progress: 25
-    }).eq('id', id);
-
-    logStream.push('Building repository...\n');
-    const buildDir = await buildRepo(repoPath);
-
-    await supabase.from('upload_statuses').update({
-      status: 'uploading',
-      progress: 50
-    }).eq('id', id);
-
-    if (buildDir) {
-      logStream.push('Uploading built files to S3...\n');
-      await uploadDirectoryToS3(buildDir, "source", `builds/${id}`);
-    } else {
-      logStream.push('Uploading source files to S3...\n');
-      await uploadDirectoryToS3(repoPath, "source", `builds/${id}`);
-    }
-    logStream.push('Creating DNS record...\n');
-    await createDNSRecord(id);
-
-    await supabase.from('upload_statuses').update({
-      status: 'completed',
-      progress: 100
-    }).eq('id', id);
-
-
-    logStream.push(`ID: ${id}\n`);
-    logStream.push(`Upload complete\n`);
-    logStream.push(null);
-
-    res.end();
-
-    // Clean up the local repository after successful upload
-    await rimraf(repoPath);
-  } catch (error: any) {
-    await cleanupAndHandleError(error);
   }
 });
 
@@ -140,7 +98,9 @@ app.get('/status/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'ID not found' });
     }
 
-    res.json(data);
+    const queueStatus = await getBuildStatus(id);
+
+    res.json({ ...data, queueStatus });
   } catch (error) {
     next(error);
   }
@@ -151,9 +111,6 @@ app.use((err: any, req: any, res:any, next:any) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal Server Error' });
 });
-
-// In-memory store for active log streams
-const activeLogStreams: { [key: string]: Readable } = {};
 
 const server = app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
