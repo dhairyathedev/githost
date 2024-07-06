@@ -9,6 +9,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import { Readable } from 'stream';
 import {rimraf} from 'rimraf'; 
+import { createDNSRecord } from './lib/dns';
 
 // Load environment variables
 dotenv.config();
@@ -108,11 +109,14 @@ app.post('/upload', async (req, res) => {
       logStream.push('Uploading source files to S3...\n');
       await uploadDirectoryToS3(repoPath, "source", `builds/${id}`);
     }
+    logStream.push('Creating DNS record...\n');
+    await createDNSRecord(id);
 
     await supabase.from('upload_statuses').update({
       status: 'completed',
       progress: 100
     }).eq('id', id);
+
 
     logStream.push(`ID: ${id}\n`);
     logStream.push(`Upload complete\n`);
