@@ -5,9 +5,11 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.44.2",
+    "@types/bull": "^4.10.0",
     "aws-sdk": "^2.1653.0",
     "axios": "^1.7.2",
     "body-parser": "^1.20.2",
+    "bull": "^4.15.1",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "hono": "^4.4.11",
