@@ -62,10 +62,6 @@ app.post('/upload', async (req, res) => {
 
     const repoPath = path.join(__dirname, `../output/${id}`);
     
-    // Delete the existing directory if it exists
-    if (fs.existsSync(repoPath)) {
-      rimraf.sync(repoPath);
-    }
     
     logStream.push('Cloning repository...\n');
     await simpleGit().clone(repoUrl, repoPath);
