@@ -8,7 +8,7 @@ import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import { Readable } from 'stream';
-import rimraf from 'rimraf'; // Add rimraf to delete directories
+import {rimraf} from 'rimraf'; 
 
 // Load environment variables
 dotenv.config();
@@ -55,23 +55,51 @@ app.post('/upload', async (req, res) => {
     res.write(`data: ${chunk.toString()}\n\n`);
   });
 
+  const repoPath = path.join(__dirname, `../output/${id}`);
+
+  const cleanupAndHandleError = async (error: Error) => {
+    console.error('Error during upload:', error);
+    logStream.push(`Error: ${error.message}\n`);
+    
+    try {
+      await supabase.from('upload_statuses').update({
+        status: 'failed',
+        error: error.message
+      }).eq('id', id);
+    } catch (dbError) {
+      console.error('Error updating database:', dbError);
+    }
+
+    try {
+      await rimraf(repoPath);
+    } catch (cleanupError) {
+      console.error('Error cleaning up repository:', cleanupError);
+    }
+
+    logStream.push(null);
+    res.end();
+  };
+
   try {
     await supabase.from('upload_statuses').insert([
       { id, title, repo_url: repoUrl, status: 'cloning', progress: 0 }
     ]);
 
-    const repoPath = path.join(__dirname, `../output/${id}`);
-    
-    
     logStream.push('Cloning repository...\n');
     await simpleGit().clone(repoUrl, repoPath);
 
     await supabase.from('upload_statuses').update({
-      status: 'uploading'
+      status: 'uploading',
+      progress: 25
     }).eq('id', id);
 
     logStream.push('Building repository...\n');
     const buildDir = await buildRepo(repoPath);
+
+    await supabase.from('upload_statuses').update({
+      status: 'uploading',
+      progress: 50
+    }).eq('id', id);
 
     if (buildDir) {
       logStream.push('Uploading built files to S3...\n');
@@ -91,16 +119,11 @@ app.post('/upload', async (req, res) => {
     logStream.push(null);
 
     res.end();
-  } catch (error: any) {
-    console.error('Error during upload:', error);
-    logStream.push(`Error: ${error.message}\n`);
-    logStream.push(null);
-    res.end(); // Ensure response is ended before sending error response
 
-    // Use setImmediate to avoid 'Cannot set headers after they are sent to the client'
-    setImmediate(() => {
-      res.status(500).json({ error: 'Internal Server Error' });
-    });
+    // Clean up the local repository after successful upload
+    await rimraf(repoPath);
+  } catch (error: any) {
+    await cleanupAndHandleError(error);
   }
 });
 
