@@ -13,28 +13,41 @@ const buildQueue = new Queue('build-queue', process.env.REDIS_URL as string);
 
 buildQueue.process(async (job) => {
   const { id, repoPath, repoUrl } = job.data;
+  const logs: any = [];
+
+  const addLog = async (message: string) => {
+    logs.push({ timestamp: new Date().toISOString(), message });
+    await supabase.from('deployment_logs').upsert({ id, logs });
+  };
 
   try {
+    await addLog('Starting build process');
     await supabase.from('upload_statuses').update({
       status: 'building',
       progress: 25
     }).eq('id', id);
 
+    await addLog('Building repository');
     const buildDir = await buildRepo(repoPath);
 
+    await addLog('Build completed, starting upload');
     await supabase.from('upload_statuses').update({
       status: 'uploading',
       progress: 50
     }).eq('id', id);
 
     if (buildDir) {
+      await addLog('Uploading built files to S3');
       await uploadDirectoryToS3(buildDir, "source", `builds/${id}`);
     } else {
+      await addLog('Uploading source files to S3');
       await uploadDirectoryToS3(repoPath, "source", `builds/${id}`);
     }
 
+    await addLog('Creating DNS record');
     await createDNSRecord(id);
 
+    await addLog('Deployment completed successfully');
     await supabase.from('upload_statuses').update({
       status: 'completed',
       progress: 100
@@ -46,6 +59,7 @@ buildQueue.process(async (job) => {
     return { success: true, id };
   } catch (error: any) {
     console.error('Error during build process:', error);
+    await addLog(`Error: ${error.message}`);
 
     await supabase.from('upload_statuses').update({
       status: 'failed',
@@ -64,10 +78,64 @@ export const addToBuildQueue = async (id: string, repoPath: string, repoUrl: str
 
 export const getBuildStatus = async (id: string) => {
   const job = await buildQueue.getJob(id);
-  if (!job) return null;
+  const jobCounts = await buildQueue.getJobCounts();
 
-  const state = await job.getState();
-  const progress = job.progress();
+  // Fetch status data from the database
+  const { data: statusData, error: statusError } = await supabase
+    .from('upload_statuses')
+    .select('*')
+    .eq('id', id)
+    .single();
 
-  return { id: job.id, state, progress };
+  // Fetch logs data from the database
+  const { data: logsData, error: logsError } = await supabase
+    .from('deployment_logs')
+    .select('logs')
+    .eq('id', id)
+    .single();
+
+  // If there's no job in the queue and no data in the database, return null
+  if (!job && !statusData) {
+    return null;
+  }
+
+  let queueInfo: {
+    state: string;
+    progress: number;
+    queuePosition: number | null;
+    jobsAhead: number | null;
+    totalQueuedJobs: number;
+  } = {
+    state: 'completed',
+    progress: 100,
+    queuePosition: null,
+    jobsAhead: null,
+    totalQueuedJobs: jobCounts.waiting + jobCounts.active
+  };
+
+  if (job) {
+    const state = await job.getState();
+    const progress = job.progress();
+
+    // Manually calculate the job's position in the queue
+    const waitingJobs = await buildQueue.getWaiting();
+    const activeJobs = await buildQueue.getActive();
+    const allJobs = [...waitingJobs, ...activeJobs];
+    const position = allJobs.findIndex(j => j.id === job.id);
+
+    queueInfo = {
+      state,
+      progress,
+      queuePosition: position !== -1 ? position + 1 : null,
+      jobsAhead: position !== -1 ? position : null,
+      totalQueuedJobs: jobCounts.waiting + jobCounts.active
+    };
+  }
+
+  return { 
+    id,
+    ...queueInfo,
+    status: statusData || { status: 'unknown' },
+    logs: logsData?.logs || []
+  };
 };
