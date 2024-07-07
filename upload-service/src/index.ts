@@ -92,16 +92,15 @@ app.post('/upload', async (req, res) => {
 app.get('/status/:id', async (req, res, next) => {
   const { id } = req.params;
   try {
-    const { data, error } = await supabase.from('upload_statuses').select('*').eq('id', id).single();
+    const status = await getBuildStatus(id);
 
-    if (error) {
-      return res.status(404).json({ error: 'ID not found' });
+    if (!status) {
+      return res.status(404).json({ error: 'Deployment not found' });
     }
 
-    const queueStatus = await getBuildStatus(id);
-
-    res.json({ ...data, queueStatus });
+    res.json(status);
   } catch (error) {
+    console.error('Error fetching deployment status:', error);
     next(error);
   }
 });
