@@ -39,6 +39,7 @@ app.get('/env', (req, res) => {
 });
 
 app.post('/upload', async (req, res) => {
+  console.log('Received upload request:', req.body);
   const { id, title, repoUrl } = req.body;
 
   res.setHeader('Content-Type', 'text/event-stream');
