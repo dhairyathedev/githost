@@ -4,7 +4,7 @@ main = "src/index.ts"
 compatibility_date = "2024-07-01"
 compatibility_flags = ["nodejs_compat"]
 
-account_id = "***REMOVED***" # ← Replace with your Account ID.
+account_id = "ACCOUNT_ID" # ← Replace with your Account ID.
 workers_dev = true
 
 
@@ -26,8 +26,8 @@ r2_buckets = [
 # - https://developers.cloudflare.com/workers/configuration/secrets/
 
 [vars]
-ACCESS_KEY_ID="***REMOVED***"
-SECRET_ACCESS_KEY="***REMOVED***"
+ACCESS_KEY_ID="ACCESS_KEY_ID"
+SECRET_ACCESS_KEY="R2_SECRET_ACCESS_KEY"
 
 # Bind the Workers AI model catalog. Run machine learning models, powered by serverless GPUs, on Cloudflare’s global network
 # Docs: https://developers.cloudflare.com/workers/wrangler/configuration/#workers-ai

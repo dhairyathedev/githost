@@ -6,7 +6,7 @@ dotenv.config();
 const s3 = new S3({
   accessKeyId: process.env.ACCESS_KEY_ID,
   secretAccessKey: process.env.SECRET_ACCESS_KEY,
-  endpoint: "https://***REMOVED***.r2.cloudflarestorage.com"
+  endpoint: "https://333042712cd6ef85de4f399a2789813a.r2.cloudflarestorage.com"
 });
 
 const app = express();
