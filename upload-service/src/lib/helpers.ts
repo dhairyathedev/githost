@@ -68,22 +68,55 @@ export const buildRepo = async (repoPath: string): Promise<string> => {
 
   if (fs.existsSync(packageJsonPath)) {
     try {
+      // Install dependencies
       await execPromise(`npm install --force`, { cwd: repoPath });
-      await execPromise(`npm run build`, { cwd: repoPath });
 
-      if (fs.existsSync(path.join(repoPath, "build"))) {
-        buildDir = path.join(repoPath, "build");
-      } else if (fs.existsSync(path.join(repoPath, ".next"))) {
-        buildDir = path.join(repoPath, ".next");
+      // Read package.json to determine the build script
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+      const buildScript = packageJson.scripts && packageJson.scripts.build;
+
+      if (buildScript) {
+        // Run the build script
+        await execPromise(`npm run build`, { cwd: repoPath });
+      } else {
+        console.warn("No build script found in package.json");
       }
+
+      // Check for common build output directories
+      const possibleBuildDirs = [
+        "build",
+        "dist",
+        "out",
+        ".next",
+        "public",
+        "output"
+      ];
+
+      for (const dir of possibleBuildDirs) {
+        const fullPath = path.join(repoPath, dir);
+        if (fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory()) {
+          buildDir = fullPath;
+          break;
+        }
+      }
+
+      if (!buildDir) {
+        console.warn("No common build directory found. Using the repo root.");
+        buildDir = repoPath;
+      }
+
     } catch (error) {
       console.error("Build failed:", error);
       throw new Error("Build failed");
     }
+  } else {
+    console.warn("No package.json found. Using the repo root as build directory.");
+    buildDir = repoPath;
   }
 
   return buildDir;
 };
+
 
 export const uploadDirectoryToS3 = async (dirPath: string, s3Bucket: string, s3Prefix: string): Promise<void> => {
   const files = await getAllFiles(dirPath);
