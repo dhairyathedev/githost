@@ -7,7 +7,7 @@ import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
 import { Readable } from 'stream';
 import { addToBuildQueue, getBuildStatus } from './lib/buildQueue';
-
+import fs from 'fs';
 // Load environment variables
 dotenv.config();
 
@@ -40,14 +40,14 @@ app.get('/env', (req, res) => {
 
 app.post('/upload', async (req, res) => {
   console.log('Received upload request:', req.body);
-  const { id, title, repoUrl } = req.body;
+  const { id, title, repoUrl, envVariables } = req.body;
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
 
   const logStream = new Readable({
-    read() {}
+    read() { }
   });
 
   logStream.on('data', (chunk) => {
@@ -64,6 +64,14 @@ app.post('/upload', async (req, res) => {
     logStream.push('Cloning repository...\n');
     await simpleGit().clone(repoUrl, repoPath);
 
+    if (envVariables) {
+      const envFilePath = path.join(repoPath, '.env');
+      const envContent = Object.entries(envVariables)
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n');
+      await fs.promises.writeFile(envFilePath, envContent);
+    }
+
     logStream.push('Adding to build queue...\n');
     await addToBuildQueue(id, repoPath, repoUrl);
 
@@ -75,7 +83,7 @@ app.post('/upload', async (req, res) => {
   } catch (error: any) {
     console.error('Error during upload:', error);
     logStream.push(`Error: ${error.message}\n`);
-    
+
     try {
       await supabase.from('upload_statuses').update({
         status: 'failed',
@@ -107,7 +115,7 @@ app.get('/status/:id', async (req, res, next) => {
 });
 
 // Global error handler
-app.use((err: any, req: any, res:any, next:any) => {
+app.use((err: any, req: any, res: any, next: any) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal Server Error' });
 });
