@@ -2,6 +2,34 @@ interface Env {
 	SOURCE: R2Bucket;
   }
   
+  function getContentType(filePath: string): string {
+	const extension = filePath.split('.').pop()?.toLowerCase();
+	switch (extension) {
+	  case 'html': return 'text/html';
+	  case 'css': return 'text/css';
+	  case 'js': return 'application/javascript';
+	  case 'svg': return 'image/svg+xml';
+	  case 'png': return 'image/png';
+	  case 'jpg':
+	  case 'jpeg': return 'image/jpeg';
+	  case 'gif': return 'image/gif';
+	  case 'webp': return 'image/webp';
+	  case 'json': return 'application/json';
+	  default: return 'application/octet-stream';
+	}
+  }
+  
+  async function proxyRequest(url: string): Promise<Response> {
+	const response = await fetch(url);
+	const newHeaders = new Headers(response.headers);
+	newHeaders.set('Access-Control-Allow-Origin', '*');
+	return new Response(response.body, {
+	  status: response.status,
+	  statusText: response.statusText,
+	  headers: newHeaders,
+	});
+  }
+  
   export default {
 	async fetch(
 	  request: Request,
@@ -11,6 +39,13 @@ interface Env {
 	  const url = new URL(request.url);
 	  const host = url.hostname;
 	  const id = host.split('.')[0];
+  
+	  // Check if this is a request for an external resource
+	  if (url.pathname.startsWith('/proxy/')) {
+		const originalUrl = decodeURIComponent(url.pathname.slice(7)); // Remove '/proxy/' prefix
+		return proxyRequest(originalUrl);
+	  }
+  
 	  let filePath = url.pathname.substring(1); // remove leading slash
 	  if (filePath === '') {
 		filePath = 'index.html';
@@ -39,10 +74,19 @@ interface Env {
 		object.writeHttpMetadata(headers);
 		headers.set('etag', object.httpEtag);
   
-		const type = filePath.endsWith('html') ? 'text/html' :
-					 filePath.endsWith('css') ? 'text/css' :
-					 'application/javascript';
-		headers.set('Content-Type', type);
+		const contentType = getContentType(filePath);
+		headers.set('Content-Type', contentType);
+  
+		// Add caching headers
+		headers.set('Cache-Control', 'public, max-age=3600');
+  
+		// Add CORS headers
+		headers.set('Access-Control-Allow-Origin', '*');
+  
+		// Add basic security headers
+		headers.set('X-Content-Type-Options', 'nosniff');
+		headers.set('X-Frame-Options', 'DENY');
+		headers.set('Content-Security-Policy', "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval';");
   
 		console.log(`Successfully retrieved object for key: ${key}`);
 		return new Response(object.body, {
