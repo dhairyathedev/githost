@@ -1,119 +1,42 @@
-import Link from "next/link";
-import { headers } from "next/headers";
-import { createClient } from "@/utils/supabase/server";
-import { redirect } from "next/navigation";
-import { SubmitButton } from "./submit-button";
+import React from 'react';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 
-export default function Login({
-  searchParams,
-}: {
-  searchParams: { message: string };
-}) {
-  const signIn = async (formData: FormData) => {
-    "use server";
 
-    const email = formData.get("email") as string;
-    const password = formData.get("password") as string;
-    const supabase = createClient();
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+function SignUpPage() {
+    
+    return (
+   
+<main className="container flex items-center justify-center h-screen w-4/3  ">
 
-    if (error) {
-      return redirect("/login?message=Could not authenticate user");
-    }
+  <form className="container w-1/3 h-[full] border-2 border-gray-300 my-10 mx-20 rounded-xl  " >
+             
+    <h1 className='text-center font-medium text-xl py-3'> Welcome to <span className='font-bold text-2xl'> GitHost </span>  </h1>
+    <h1 className="text-3xl font-medium px-8 mx-5 py-1 w-96 text-center"> Sign Up to Deploy your projects </h1>
 
-    return redirect("/protected");
-  };
+  <div className="flex flex-col px-3">
 
-  const signUp = async (formData: FormData) => {
-    "use server";
+  <Label htmlFor="email" className="font-semibold my-1 pt-2 mx-2">Email </Label>
+  <Input className="border-2 border-gray-600 mt-1 rounded-full cursor-pointer shadow-bottom-md" type="email" id="email" placeholder='abc123@gmail.com' />
 
-    const origin = headers().get("origin");
-    const email = formData.get("email") as string;
-    const password = formData.get("password") as string;
-    const supabase = createClient();
+  <Label htmlFor="password" className="font-semibold my-1 pt-4 mx-2">Password </Label>
+  <Input className="border-2 border-gray-600 mt-1 rounded-full cursor-pointer shadow-bottom-md" type="password" id="password" placeholder='enter password' />
+  </div>
 
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${origin}/auth/callback`,
-      },
-    });
+        <Button className="my-7 font-semibold w-80  bg-black text-white px-24 mx-7 py-2 rounded-2xl  hover:transition ease-in-out duration-700">
+            Create account
+        </Button>
 
-    if (error) {
-      return redirect("/login?message=Could not authenticate user");
-    }
+    </form>   
+</main>
 
-    return redirect("/login?message=Check email to continue sign in process");
-  };
 
-  return (
-    <div className="flex-1 flex flex-col w-full px-8 sm:max-w-md justify-center gap-2">
-      <Link
-        href="/"
-        className="absolute left-8 top-8 py-2 px-4 rounded-md no-underline text-foreground bg-btn-background hover:bg-btn-background-hover flex items-center group text-sm"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="mr-2 h-4 w-4 transition-transform group-hover:-translate-x-1"
-        >
-          <polyline points="15 18 9 12 15 6" />
-        </svg>{" "}
-        Back
-      </Link>
 
-      <form className="flex-1 flex flex-col w-full justify-center gap-2 text-foreground">
-        <label className="text-md" htmlFor="email">
-          Email
-        </label>
-        <input
-          className="rounded-md px-4 py-2 bg-inherit border mb-6"
-          name="email"
-          placeholder="you@example.com"
-          required
-        />
-        <label className="text-md" htmlFor="password">
-          Password
-        </label>
-        <input
-          className="rounded-md px-4 py-2 bg-inherit border mb-6"
-          type="password"
-          name="password"
-          placeholder="••••••••"
-          required
-        />
-        <SubmitButton
-          formAction={signIn}
-          className="bg-green-700 rounded-md px-4 py-2 text-foreground mb-2"
-          pendingText="Signing In..."
-        >
-          Sign In
-        </SubmitButton>
-        <SubmitButton
-          formAction={signUp}
-          className="border border-foreground/20 rounded-md px-4 py-2 text-foreground mb-2"
-          pendingText="Signing Up..."
-        >
-          Sign Up
-        </SubmitButton>
-        {searchParams?.message && (
-          <p className="mt-4 p-4 bg-foreground/10 text-foreground text-center">
-            {searchParams.message}
-          </p>
-        )}
-      </form>
-    </div>
-  );
+
+    )
 }
+
+export default SignUpPage;
