@@ -113,8 +113,8 @@ function dashboard() {
               Build Logs
             </AccordionTrigger>
             <AccordionContent>
-              {logs.map((ele) => (
-                <div className="ml-6 pt-3 font-mono">
+              {logs.map((ele, key) => (
+                <div className="ml-6 pt-3 font-mono" key={key}>
                   <p>{ele.time} : {ele.text}</p>
                 </div>
               ))}
@@ -130,7 +130,7 @@ function dashboard() {
               Deployment Summary
             </AccordionTrigger>
             <AccordionContent>
-              <div className="ml-6 pt-3 font-mono">Your Website : https://PriyanshuValiya-Google-notes.githost.xyz</div>
+              <div className="ml-6 pt-3 font-mono">Your Website : https://priyanshuvaliya.githost.xyz</div>
             </AccordionContent>
           </AccordionItem>
         </Accordion>
