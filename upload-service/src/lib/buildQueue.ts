@@ -20,6 +20,11 @@ buildQueue.process(async (job) => {
     await supabase.from('deployment_logs').upsert({ id, logs });
   };
 
+  const timeout = 180000; // 3 minutes in milliseconds
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('Deployment timed out after 3 minutes')), timeout);
+  });
+
   try {
     await addLog('Starting build process');
     await supabase.from('upload_statuses').update({
@@ -30,22 +35,27 @@ buildQueue.process(async (job) => {
     await addLog('Building repository');
     const buildDir = await buildRepo(repoPath);
 
+    if (!buildDir) {
+      throw new Error('Build process failed');
+    }
+
     await addLog('Build completed, starting upload');
     await supabase.from('upload_statuses').update({
       status: 'uploading',
       progress: 50
     }).eq('id', id);
 
-    if (buildDir) {
-      await addLog('Uploading built files to S3');
-      await uploadDirectoryToS3(buildDir, "source", `builds/${id}`);
-    } else {
-      await addLog('Uploading source files to S3');
-      await uploadDirectoryToS3(repoPath, "source", `builds/${id}`);
-    }
+    await addLog('Uploading built files to S3');
+    await Promise.race([
+      uploadDirectoryToS3(buildDir, "source", `builds/${id}`),
+      timeoutPromise
+    ]);
 
     await addLog('Creating DNS record');
-    await createDNSRecord(id);
+    await Promise.race([
+      createDNSRecord(id),
+      timeoutPromise
+    ]);
 
     await addLog('Deployment completed successfully');
     await supabase.from('upload_statuses').update({
