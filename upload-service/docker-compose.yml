@@ -4,8 +4,7 @@ services:
   upload-service:
     build: .
     ports:
-      - "80:80"
-      - "443:443"
+      - "8080:80"
     environment:
       - NODE_ENV=production
       - PORT=80
