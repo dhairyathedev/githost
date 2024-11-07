@@ -9,6 +9,7 @@ import dotenv from 'dotenv';
 import { Readable } from 'stream';
 import { addToBuildQueue, getBuildStatus } from './lib/buildQueue';  // Updated import
 import fs from 'fs';
+import cors from 'cors';
 
 // Load environment variables
 dotenv.config();
@@ -24,6 +25,17 @@ if (!supabaseUrl || !supabaseKey) {
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const app = express();
+
+// CORS middleware configuration
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? ['https://githost.xyz', /\.githost\.xyz$/] // Allow main domain and all subdomains in production
+    : ['http://localhost:3000'], // Allow local development
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  maxAge: 86400 // Cache preflight requests for 24 hours
+}));
 
 // Middleware to parse JSON bodies
 app.use(bodyParser.json());
