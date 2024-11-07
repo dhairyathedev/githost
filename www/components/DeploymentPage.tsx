@@ -44,7 +44,7 @@ export function EnhancedBuildSimulator() {
 
   useEffect(() => {
     if (deploymentId) {
-      const eventSource = new EventSource(`http://localhost:3001/status/${deploymentId}/live`);
+      const eventSource = new EventSource(`${process.env.NEXT_PUBLIC_API_URL}/status/${deploymentId}/live`);
       
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
@@ -81,7 +81,7 @@ export function EnhancedBuildSimulator() {
     setLogs([]);
 
     try {
-      const response = await fetch('/backend/api/upload', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/upload`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
