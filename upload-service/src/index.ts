@@ -16,7 +16,7 @@ dotenv.config();
 
 const supabaseUrl = process.env.SUPABASE_URL as string;
 const supabaseKey = process.env.SUPABASE_KEY as string;
-const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 80;
 
 if (!supabaseUrl || !supabaseKey) {
   throw new Error('Supabase URL and Key must be provided in environment variables');
