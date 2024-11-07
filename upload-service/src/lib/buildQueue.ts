@@ -15,7 +15,6 @@ const connection = {
   host: process.env.UPSTASH_REDIS_HOST as string,
   port: 6379,
   password: process.env.UPSTASH_REDIS_PASSWORD as string,
-  tls: {}  // Required for Upstash Redis
 };
 
 // Create BullMQ queue
