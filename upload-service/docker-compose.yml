@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  upload-service:
+    build: .
+    ports:
+      - "80:80"
+    environment:
+      - NODE_ENV=production
+      - PORT=80
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - UPSTASH_REDIS_HOST=${UPSTASH_REDIS_HOST}
+      - UPSTASH_REDIS_PASSWORD=${UPSTASH_REDIS_PASSWORD}
+      - ACCESS_KEY_ID=${ACCESS_KEY_ID}
+      - SECRET_ACCESS_KEY=${SECRET_ACCESS_KEY}
+      - CLOUDFLARE_ENDPOINT=${CLOUDFLARE_ENDPOINT}
+      - CLOUDFLARE_WORKER_NAME=${CLOUDFLARE_WORKER_NAME}
+      - CLOUDFLARE_ZONE_ID=${CLOUDFLARE_ZONE_ID}
+      - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID}
+      - CLOUDFLARE_API_KEY=${CLOUDFLARE_API_KEY}
+    volumes:
+      - ./output:/app/output
+    restart: unless-stopped
