@@ -1,5 +1,5 @@
 // lib/buildQueue.ts
-import Queue from 'bull';
+import { Queue, Worker, QueueEvents } from 'bullmq';
 import { buildRepo, uploadDirectoryToS3 } from './helpers';
 import { createDNSRecord } from './dns';
 import { createClient } from '@supabase/supabase-js';
@@ -9,6 +9,22 @@ import path from 'path';
 const supabaseUrl = process.env.SUPABASE_URL as string;
 const supabaseKey = process.env.SUPABASE_KEY as string;
 const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Redis connection configuration for Upstash
+const connection = {
+  host: process.env.UPSTASH_REDIS_HOST as string,
+  port: 6379,
+  password: process.env.UPSTASH_REDIS_PASSWORD as string,
+  tls: {}  // Required for Upstash Redis
+};
+
+// Create BullMQ queue
+const buildQueue = new Queue('build-queue', {
+  connection
+});
+
+// Create queue events listener
+const queueEvents = new QueueEvents('build-queue', { connection });
 
 interface BuildLog {
   id: string;
@@ -27,24 +43,22 @@ interface DeploymentStatus {
   error?: string;
 }
 
-const buildQueue = new Queue('build-queue', process.env.REDIS_URL as string);
-
-// Add queue event listeners
-buildQueue.on('global:completed', async (jobId, result) => {
+// Queue event listeners
+queueEvents.on('completed', async ({ jobId }) => {
   const job = await buildQueue.getJob(jobId);
   if (job) {
     await updateDeploymentStatus(job.data.id, 'completed', 100);
   }
 });
 
-buildQueue.on('global:failed', async (jobId, error) => {
+queueEvents.on('failed', async ({ jobId, failedReason }) => {
   const job = await buildQueue.getJob(jobId);
   if (job) {
-    await updateDeploymentStatus(job.data.id, 'failed', 0, error.message);
+    await updateDeploymentStatus(job.data.id, 'failed', 0, failedReason);
   }
 });
 
-buildQueue.on('waiting', async (jobId) => {
+queueEvents.on('waiting', async ({ jobId }) => {
   const job = await buildQueue.getJob(jobId);
   if (job) {
     await updateDeploymentStatus(job.data.id, 'queued', 0);
@@ -52,18 +66,12 @@ buildQueue.on('waiting', async (jobId) => {
   }
 });
 
-buildQueue.on('active', async (job) => {
-  await updateDeploymentStatus(job.data.id, 'building', 25);
-  await addBuildLog(job.data.id, 'info', 'Job started processing');
-});
-
-buildQueue.on('failed', async (job, err) => {
-  await updateDeploymentStatus(job.data.id, 'failed', 0, err.message);
-  await addBuildLog(job.data.id, 'error', `Job failed: ${err.message}`);
-});
-
-buildQueue.on('stalled', async (job) => {
-  await addBuildLog(job.data.id, 'error', 'Job stalled - will be retried');
+queueEvents.on('active', async ({ jobId }) => {
+  const job = await buildQueue.getJob(jobId);
+  if (job) {
+    await updateDeploymentStatus(job.data.id, 'building', 25);
+    await addBuildLog(job.data.id, 'info', 'Job started processing');
+  }
 });
 
 const updateDeploymentStatus = async (
@@ -110,15 +118,14 @@ const addBuildLog = async (
   return log;
 };
 
-buildQueue.process(async (job) => {
+// Create worker
+const worker = new Worker('build-queue', async (job) => {
   const { id, repoPath, repoUrl } = job.data;
 
   try {
-    // Update initial status
     await updateDeploymentStatus(id, 'queued', 0);
     await addBuildLog(id, 'info', 'Build queued');
 
-    // Building phase
     await updateDeploymentStatus(id, 'building', 25);
     await addBuildLog(id, 'info', 'Starting build process');
     
@@ -128,19 +135,16 @@ buildQueue.process(async (job) => {
     }
     await addBuildLog(id, 'success', 'Build completed successfully');
 
-    // Uploading phase
     await updateDeploymentStatus(id, 'uploading', 50);
     await addBuildLog(id, 'info', 'Uploading built files');
     
     await uploadDirectoryToS3(buildDir, "source", `builds/${id}`);
     await addBuildLog(id, 'success', 'Files uploaded successfully');
 
-    // DNS setup
     await addBuildLog(id, 'info', 'Configuring DNS');
     await createDNSRecord(id);
     await addBuildLog(id, 'success', 'DNS configured successfully');
 
-    // Cleanup and completion
     await rimraf(repoPath);
     await updateDeploymentStatus(id, 'completed', 100);
     await addBuildLog(id, 'success', 'Deployment completed successfully');
@@ -153,27 +157,23 @@ buildQueue.process(async (job) => {
     await rimraf(repoPath);
     throw error;
   }
-});
+}, { connection });
 
 export const addToBuildQueue = async (id: string, repoPath: string, repoUrl: string) => {
-  const job = await buildQueue.add(
-    { id, repoPath, repoUrl },
-    {
-      attempts: 3,
-      backoff: {
-        type: 'exponential',
-        delay: 2000
-      },
-      removeOnComplete: {
-        age: 3600, // Keep completed jobs for 1 hour
-        count: 1000 // Keep last 1000 completed jobs
-      },
-      removeOnFail: {
-        age: 24 * 3600 // Keep failed jobs for 24 hours
-      },
-      priority: 1
+  const job = await buildQueue.add('build', { id, repoPath, repoUrl }, {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 2000
+    },
+    removeOnComplete: {
+      age: 3600,
+      count: 1000
+    },
+    removeOnFail: {
+      age: 24 * 3600
     }
-  );
+  });
 
   await updateDeploymentStatus(id, 'queued', 0);
   await addBuildLog(id, 'info', 'Added to build queue');
@@ -182,10 +182,9 @@ export const addToBuildQueue = async (id: string, repoPath: string, repoUrl: str
 };
 
 export const getBuildStatus = async (id: string) => {
-  const job = await buildQueue.getJob(id);
-  const jobCounts = await buildQueue.getJobCounts();
-
-  // Fetch status and logs from database
+  const jobs = await buildQueue.getJobs(['waiting', 'active', 'delayed']);
+  const job = jobs.find(j => j.data.id === id);
+  
   const [statusResult, logsResult] = await Promise.all([
     supabase.from('upload_statuses').select('*').eq('id', id).single(),
     supabase.from('deployment_logs').select('logs').eq('id', id).single()
@@ -195,7 +194,7 @@ export const getBuildStatus = async (id: string) => {
     return null;
   }
 
-  const queueInfo = await getQueueInfo(job);
+  const queueInfo = await getQueueInfo(jobs, job);
   
   return {
     id,
@@ -209,7 +208,7 @@ export const getBuildStatus = async (id: string) => {
   };
 };
 
-async function getQueueInfo(job: Queue.Job | null) {
+async function getQueueInfo(allJobs: any[], job: any) {
   if (!job) {
     return {
       state: 'unknown',
@@ -220,19 +219,14 @@ async function getQueueInfo(job: Queue.Job | null) {
   }
 
   const state = await job.getState();
-  const [waiting, active, delayed] = await Promise.all([
-    buildQueue.getWaiting(),
-    buildQueue.getActive(),
-    buildQueue.getDelayed()
-  ]);
-
-  // Sort by job ID or creation time
-  const allJobs = [...waiting, ...active, ...delayed].sort((a, b) => 
-    Number(a.timestamp || a.id) - Number(b.timestamp || b.id)
+  
+  // Sort jobs by timestamp
+  const sortedJobs = allJobs.sort((a, b) => 
+    Number(a.timestamp) - Number(b.timestamp)
   );
 
-  const position = allJobs.findIndex(j => j.id === job.id);
-  const jobsAhead = Math.max(0, position);  // Ensure non-negative
+  const position = sortedJobs.findIndex(j => j.id === job.id);
+  const jobsAhead = Math.max(0, position);
 
   return {
     state,
