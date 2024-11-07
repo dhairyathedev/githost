@@ -5,6 +5,7 @@ services:
     build: .
     ports:
       - "80:80"
+      - "443:443"
     environment:
       - NODE_ENV=production
       - PORT=80
