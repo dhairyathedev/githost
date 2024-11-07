@@ -4,10 +4,10 @@ services:
   upload-service:
     build: .
     ports:
-      - "8080:80"
+      - "443:443"
     environment:
       - NODE_ENV=production
-      - PORT=80
+      - PORT=443
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_KEY=${SUPABASE_KEY}
       - UPSTASH_REDIS_HOST=${UPSTASH_REDIS_HOST}
@@ -21,16 +21,4 @@ services:
       - CLOUDFLARE_API_KEY=${CLOUDFLARE_API_KEY}
     volumes:
       - ./output:/app/output
-    restart: unless-stopped
-
-  nginx:
-    image: nginx:latest
-    container_name: nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
-      - /etc/letsencrypt:/etc/letsencrypt
-      - /var/lib/letsencrypt:/var/lib/letsencrypt
     restart: unless-stopped
