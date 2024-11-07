@@ -14,70 +14,104 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { AlertCircle, CheckCircle2, ExternalLink } from "lucide-react";
+import { v4 as uuidv4 } from 'uuid';
 
-const buildSteps = [
-  "Initializing build environment",
-  "Cloning repository",
-  "Installing dependencies",
-  "Compiling source code",
-  "Running tests",
-  "Optimizing assets",
-  "Generating static files",
-  "Configuring deployment",
-  "Deploying to CDN",
-  "Updating DNS records",
-];
+interface BuildLog {
+  id: string;
+  timestamp: string;
+  type: 'info' | 'error' | 'success' | 'system';
+  message: string;
+}
+
+interface DeploymentStatus {
+  id: string;
+  state: string;
+  status: string;
+  progress: number;
+  queuePosition: number | null;
+  jobsAhead: number;
+  totalQueuedJobs: number;
+  logs: BuildLog[];
+}
 
 export function EnhancedBuildSimulator() {
   const [isBuilding, setIsBuilding] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [logs, setLogs] = useState<string[]>([]);
+  const [logs, setLogs] = useState<BuildLog[]>([]);
   const [repoUrl, setRepoUrl] = useState("");
-  const [subdomain, setSubdomain] = useState("");
+  const [deploymentId, setDeploymentId] = useState("");
+  const [status, setStatus] = useState<DeploymentStatus | null>(null);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isBuilding && progress < 100) {
-      interval = setInterval(() => {
-        setProgress((prev) => {
-          const newProgress = prev + 100 / 300; // 100% over 30 seconds
-          if (newProgress >= 100) {
-            setIsBuilding(false);
-            return 100;
-          }
-          return newProgress;
-        });
-
-        if (Math.random() < 0.2) {
-          // 20% chance to generate a log every 100ms
-          const randomStep =
-            buildSteps[Math.floor(Math.random() * buildSteps.length)];
-          setLogs((prev) => [
-            ...prev,
-            `[${new Date().toLocaleTimeString()}] ${randomStep}`,
-          ]);
+    if (deploymentId) {
+      const eventSource = new EventSource(`http://localhost:3001/status/${deploymentId}/live`);
+      
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        setStatus(data);
+        setProgress(data.progress);
+        setLogs(data.logs || []);
+        
+        if (data.status === 'completed' || data.status === 'failed') {
+          eventSource.close();
+          setIsBuilding(false);
         }
-      }, 100);
-    }
-    return () => clearInterval(interval);
-  }, [isBuilding, progress]);
+      };
 
-  const handleSubmit = () => {
-    if (!repoUrl || !subdomain) {
-      alert(
-        "Please fill in both the repository URL and subdomain/deployment ID."
-      );
+      eventSource.onerror = () => {
+        eventSource.close();
+      };
+
+      return () => {
+        eventSource.close();
+      };
+    }
+  }, [deploymentId]);
+
+  const handleSubmit = async () => {
+    if (!repoUrl) {
+      alert("Please enter a repository URL");
       return;
     }
+
+    const id = uuidv4();
+    setDeploymentId(id);
     setIsBuilding(true);
     setProgress(0);
-    setLogs([
-      `[${new Date().toLocaleTimeString()}] Starting build for ${repoUrl}`,
-    ]);
+    setLogs([]);
+
+    try {
+      const response = await fetch('/backend/api/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id,
+          title: `Deployment ${id}`,
+          repoUrl,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to start deployment');
+      }
+    } catch (error) {
+      console.error('Deployment error:', error);
+      setIsBuilding(false);
+      setLogs(prev => [...prev, {
+        id: deploymentId,
+        timestamp: new Date().toISOString(),
+        type: 'error',
+        message: 'Failed to start deployment'
+      }]);
+    }
   };
 
   const handleVisitSite = () => {
-    window.open(`https://${subdomain}.vercel.app`, "_blank");
+    if (deploymentId) {
+      window.open(`https://${deploymentId}.githost.xyz`, '_blank');
+    }
   };
 
   return (
@@ -88,31 +122,19 @@ export function EnhancedBuildSimulator() {
 
       <Card className="w-full max-w-3xl mx-auto">
         <CardHeader>
-          <CardTitle>Build Simulator</CardTitle>
-          <CardDescription>Simulate a deployment build process</CardDescription>
+          <CardTitle>Deploy Your Repository</CardTitle>
+          <CardDescription>Deploy your Git repository to Githost</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="repo-url">Repository URL</Label>
-              <Input
-                id="repo-url"
-                placeholder="https://github.com/user/repo"
-                value={repoUrl}
-                onChange={(e) => setRepoUrl(e.target.value)}
-                disabled={isBuilding}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="subdomain">Subdomain / Deployment ID</Label>
-              <Input
-                id="subdomain"
-                placeholder="my-app or deployment-123"
-                value={subdomain}
-                onChange={(e) => setSubdomain(e.target.value)}
-                disabled={isBuilding}
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="repo-url">Repository URL</Label>
+            <Input
+              id="repo-url"
+              placeholder="https://github.com/user/repo"
+              value={repoUrl}
+              onChange={(e) => setRepoUrl(e.target.value)}
+              disabled={isBuilding}
+            />
           </div>
 
           <div className="space-y-2">
@@ -129,14 +151,10 @@ export function EnhancedBuildSimulator() {
             <Label>Build Logs</Label>
             <div className="bg-black text-green-400 p-4 rounded-md h-64 overflow-y-auto font-mono text-sm">
               {logs.map((log, index) => (
-                <div key={index}>{log}</div>
-              ))}
-              {progress === 100 && (
-                <div className="text-blue-400 mt-2">
-                  [Build Complete] Deployment available at: https://{subdomain}
-                  .vercel.app
+                <div key={index} className={`text-${log.type === 'error' ? 'red' : 'green'}-400`}>
+                  [{new Date(log.timestamp).toLocaleTimeString()}] {log.message}
                 </div>
-              )}
+              ))}
             </div>
           </div>
         </CardContent>
@@ -147,12 +165,12 @@ export function EnhancedBuildSimulator() {
             className="w-full sm:w-auto"
           >
             {isBuilding ? (
-              <div>
+              <div className="flex items-center">
                 <AlertCircle className="mr-2 h-4 w-4 animate-spin" />
                 Building...
               </div>
-            ) : progress === 100 ? (
-              <div>
+            ) : status?.status === 'completed' ? (
+              <div className="flex items-center">
                 <CheckCircle2 className="mr-2 h-4 w-4" />
                 Build Complete
               </div>
@@ -160,7 +178,7 @@ export function EnhancedBuildSimulator() {
               "Start Build"
             )}
           </Button>
-          {progress === 100 && (
+          {status?.status === 'completed' && (
             <Button
               onClick={handleVisitSite}
               className="w-full sm:w-auto"
