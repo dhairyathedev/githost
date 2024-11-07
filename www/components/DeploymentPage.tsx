@@ -32,6 +32,7 @@ interface DeploymentStatus {
   jobsAhead: number;
   totalQueuedJobs: number;
   logs: BuildLog[];
+  error?: string;  // Add this line
 }
 
 export function EnhancedBuildSimulator() {
@@ -137,6 +138,17 @@ export function EnhancedBuildSimulator() {
             />
           </div>
 
+          {status?.queuePosition !== null && (
+            <div className="space-y-2">
+              <Label>Queue Status</Label>
+              <div className="text-sm text-muted-foreground">
+                <p>Position in queue: {status?.queuePosition}</p>
+                <p>Jobs ahead: {status?.jobsAhead}</p>
+                <p>Total queued jobs: {status?.totalQueuedJobs}</p>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
             <div className="flex justify-between">
               <Label>Build Progress</Label>
@@ -151,10 +163,23 @@ export function EnhancedBuildSimulator() {
             <Label>Build Logs</Label>
             <div className="bg-black text-green-400 p-4 rounded-md h-64 overflow-y-auto font-mono text-sm">
               {logs.map((log, index) => (
-                <div key={index} className={`text-${log.type === 'error' ? 'red' : 'green'}-400`}>
+                <div 
+                  key={index} 
+                  className={`${
+                    log.type === 'error' ? 'text-red-400' : 
+                    log.type === 'success' ? 'text-green-400' : 
+                    log.type === 'system' ? 'text-blue-400' : 
+                    'text-green-400'
+                  }`}
+                >
                   [{new Date(log.timestamp).toLocaleTimeString()}] {log.message}
                 </div>
               ))}
+              {status?.error && (
+                <div className="text-red-400">
+                  [Error] {status.error}
+                </div>
+              )}
             </div>
           </div>
         </CardContent>
