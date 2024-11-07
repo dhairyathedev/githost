@@ -1,3 +1,4 @@
+// index.ts
 import express from 'express';
 import simpleGit from 'simple-git';
 import { v4 as uuidv4 } from 'uuid';
@@ -6,8 +7,9 @@ import { createClient } from '@supabase/supabase-js';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
 import { Readable } from 'stream';
-import { addToBuildQueue, getBuildStatus } from './lib/buildQueue';
+import { addToBuildQueue, getBuildStatus } from './lib/buildQueue';  // Updated import
 import fs from 'fs';
+
 // Load environment variables
 dotenv.config();
 
@@ -35,6 +37,70 @@ app.get('/env', (req, res) => {
     SUPABASE_URL: process.env.SUPABASE_URL,
     SUPABASE_KEY: 'hidden', // Don't expose the key
     PORT: process.env.PORT,
+  });
+});
+
+// Route for checking the build status
+app.get('/status/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const statusData = await getBuildStatus(id);  // Use the function to get the status
+
+    if (!statusData) {
+      return res.status(404).json({ error: 'Deployment not found' });
+    }
+
+    res.json({
+      id: statusData.id,
+      state: statusData.state,
+      progress: statusData.progress,
+      queuePosition: statusData.queuePosition,
+      jobsAhead: statusData.jobsAhead,
+      totalQueuedJobs: statusData.totalQueuedJobs,
+      status: statusData.status,
+      logs: statusData.logs
+    });
+  } catch (error) {
+    console.error('Error fetching deployment status:', error);
+    res.status(500).json({ error: 'Failed to fetch deployment status' });
+  }
+});
+
+app.get('/test-connection', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('upload_statuses').select('*').limit(1);
+    if (error) throw error;
+    res.json({ message: 'Connected to the database', data });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Failed to connect to the database', error: error.message });
+  }
+});
+
+app.get('/status/:id/live', async (req, res) => {
+  const { id } = req.params;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  // Send initial status
+  const sendStatus = async () => {
+    const status = await getBuildStatus(id);
+    if (status) {
+      res.write(`data: ${JSON.stringify(status)}\n\n`);
+    }
+  };
+
+  // Send initial status
+  await sendStatus();
+
+  // Set up interval to send updates
+  const intervalId = setInterval(sendStatus, 1000);
+
+  // Clean up on client disconnect
+  req.on('close', () => {
+    clearInterval(intervalId);
   });
 });
 
@@ -73,7 +139,7 @@ app.post('/upload', async (req, res) => {
     }
 
     logStream.push('Adding to build queue...\n');
-    await addToBuildQueue(id, repoPath, repoUrl);
+    await addToBuildQueue(id, repoPath, repoUrl);  // Add job to the queue
 
     logStream.push(`ID: ${id}\n`);
     logStream.push(`Added to build queue\n`);
@@ -95,22 +161,6 @@ app.post('/upload', async (req, res) => {
 
     logStream.push(null);
     res.end();
-  }
-});
-
-app.get('/status/:id', async (req, res, next) => {
-  const { id } = req.params;
-  try {
-    const status = await getBuildStatus(id);
-
-    if (!status) {
-      return res.status(404).json({ error: 'Deployment not found' });
-    }
-
-    res.json(status);
-  } catch (error) {
-    console.error('Error fetching deployment status:', error);
-    next(error);
   }
 });
 
