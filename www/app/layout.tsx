@@ -1,4 +1,11 @@
 import { GeistSans } from "geist/font/sans";
+import {
+  ClerkProvider,
+  SignInButton,
+  SignedIn,
+  SignedOut,
+  UserButton,
+} from "@clerk/nextjs";
 import "./globals.css";
 
 const defaultUrl = process.env.VERCEL_URL
@@ -17,12 +24,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={GeistSans.className}>
-      <body className="bg-background text-foreground">
-        <main className="min-h-screen flex flex-col items-center">
-          {children}
-        </main>
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en" className={GeistSans.className}>
+        <body className="bg-background text-foreground">
+          <main className="min-h-screen flex flex-col items-center">
+            {children}
+          </main>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }
