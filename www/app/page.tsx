@@ -40,11 +40,13 @@ export default function LandingPage() {
           </p>
           <div className="flex justify-center space-x-4">
             <Link href={"/dashboard"}>
-            <Button size="lg">Start Deploying</Button>
+              <Button size="lg">Start Deploying</Button>
             </Link>
-            <Button variant="outline" size="lg">
-              Learn More
-            </Button>
+            <Link href={"/aboutus"}>
+              <Button variant="outline" size="lg">
+                About Us
+              </Button>
+            </Link>
           </div>
         </section>
 
