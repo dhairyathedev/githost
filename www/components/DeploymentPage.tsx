@@ -14,12 +14,13 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { AlertCircle, CheckCircle2, ExternalLink } from "lucide-react";
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from "uuid";
+import { useUser } from "@clerk/nextjs";
 
 interface BuildLog {
   id: string;
   timestamp: string;
-  type: 'info' | 'error' | 'success' | 'system';
+  type: "info" | "error" | "success" | "system";
   message: string;
 }
 
@@ -32,7 +33,7 @@ interface DeploymentStatus {
   jobsAhead: number;
   totalQueuedJobs: number;
   logs: BuildLog[];
-  error?: string;  // Add this line
+  error?: string; // Add this line
 }
 
 export function EnhancedBuildSimulator() {
@@ -42,18 +43,21 @@ export function EnhancedBuildSimulator() {
   const [repoUrl, setRepoUrl] = useState("");
   const [deploymentId, setDeploymentId] = useState("");
   const [status, setStatus] = useState<DeploymentStatus | null>(null);
+  const { user } = useUser();
 
   useEffect(() => {
     if (deploymentId) {
-      const eventSource = new EventSource(`${process.env.NEXT_PUBLIC_API_URL}/status/${deploymentId}/live`);
-      
+      const eventSource = new EventSource(
+        `${process.env.NEXT_PUBLIC_API_URL}/status/${deploymentId}/live`
+      );
+
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
         setStatus(data);
         setProgress(data.progress);
         setLogs(data.logs || []);
-        
-        if (data.status === 'completed' || data.status === 'failed') {
+
+        if (data.status === "completed" || data.status === "failed") {
           eventSource.close();
           setIsBuilding(false);
         }
@@ -82,49 +86,59 @@ export function EnhancedBuildSimulator() {
     setLogs([]);
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/upload`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          id,
-          title: `Deployment ${id}`,
-          repoUrl,
-        }),
-      });
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/upload`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            id,
+            title: `Deployment ${id}`,
+            repoUrl,
+          }),
+        }
+      );
 
       if (!response.ok) {
-        throw new Error('Failed to start deployment');
+        throw new Error("Failed to start deployment");
       }
     } catch (error) {
-      console.error('Deployment error:', error);
+      console.error("Deployment error:", error);
       setIsBuilding(false);
-      setLogs(prev => [...prev, {
-        id: deploymentId,
-        timestamp: new Date().toISOString(),
-        type: 'error',
-        message: 'Failed to start deployment'
-      }]);
+      setLogs((prev) => [
+        ...prev,
+        {
+          id: deploymentId,
+          timestamp: new Date().toISOString(),
+          type: "error",
+          message: "Failed to start deployment",
+        },
+      ]);
     }
   };
 
   const handleVisitSite = () => {
     if (deploymentId) {
-      window.open(`https://${deploymentId}.githost.xyz`, '_blank');
+      window.open(`https://${deploymentId}.githost.xyz`, "_blank");
     }
   };
 
   return (
     <div className="w-full">
       <div>
-        <h1 className="text-3xl text-center font-bold my-5">Githost Dashboard</h1>
+        <h1 className="text-3xl text-center font-bold my-5">
+          {user?.fullName}'s Workspace
+        </h1>
       </div>
 
       <Card className="w-full max-w-3xl mx-auto">
         <CardHeader>
           <CardTitle>Deploy Your Repository</CardTitle>
-          <CardDescription>Deploy your Git repository to Githost</CardDescription>
+          <CardDescription>
+            Deploy your Git repository to Githost
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -163,22 +177,23 @@ export function EnhancedBuildSimulator() {
             <Label>Build Logs</Label>
             <div className="bg-black text-green-400 p-4 rounded-md h-64 overflow-y-auto font-mono text-sm">
               {logs.map((log, index) => (
-                <div 
-                  key={index} 
+                <div
+                  key={index}
                   className={`${
-                    log.type === 'error' ? 'text-red-400' : 
-                    log.type === 'success' ? 'text-green-400' : 
-                    log.type === 'system' ? 'text-blue-400' : 
-                    'text-green-400'
+                    log.type === "error"
+                      ? "text-red-400"
+                      : log.type === "success"
+                      ? "text-green-400"
+                      : log.type === "system"
+                      ? "text-blue-400"
+                      : "text-green-400"
                   }`}
                 >
                   [{new Date(log.timestamp).toLocaleTimeString()}] {log.message}
                 </div>
               ))}
               {status?.error && (
-                <div className="text-red-400">
-                  [Error] {status.error}
-                </div>
+                <div className="text-red-400">[Error] {status.error}</div>
               )}
             </div>
           </div>
@@ -194,7 +209,7 @@ export function EnhancedBuildSimulator() {
                 <AlertCircle className="mr-2 h-4 w-4 animate-spin" />
                 Building...
               </div>
-            ) : status?.status === 'completed' ? (
+            ) : status?.status === "completed" ? (
               <div className="flex items-center">
                 <CheckCircle2 className="mr-2 h-4 w-4" />
                 Build Complete
@@ -203,7 +218,7 @@ export function EnhancedBuildSimulator() {
               "Start Build"
             )}
           </Button>
-          {status?.status === 'completed' && (
+          {status?.status === "completed" && (
             <Button
               onClick={handleVisitSite}
               className="w-full sm:w-auto"
